@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Rift Siege</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="overlay">
+    <div class="panel">
+      <h1>RIFT SIEGE</h1>
+      <p class="tag">A Three.js sci-fi shooter prototype inspired by industrial arena FPS design.</p>
+      <ul>
+        <li>WASD = move</li>
+        <li>Mouse = aim</li>
+        <li>Left click = fire</li>
+        <li>Shift = sprint</li>
+        <li>Ctrl = crouch</li>
+        <li>Space = jump</li>
+        <li>R = reload</li>
+      </ul>
+      <button id="startBtn">ENTER FACILITY</button>
+      <p class="small">No external assets required. Runs directly in browser.</p>
+    </div>
+  </div>
+
+  <div id="hud">
+    <div class="hud-left">
+      <div class="stat"><span>HEALTH</span><strong id="health">100</strong></div>
+      <div class="stat"><span>ARMOR</span><strong id="armor">25</strong></div>
+    </div>
+    <div class="hud-center">
+      <div id="crosshair"></div>
+      <div id="message">Secure the reactor core.</div>
+    </div>
+    <div class="hud-right">
+      <div class="stat"><span>AMMO</span><strong id="ammo">30 / 120</strong></div>
+      <div class="stat"><span>ENEMIES</span><strong id="enemyCount">0</strong></div>
+    </div>
+  </div>
+
+  <div id="damageFlash"></div>
+
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.161.0/build/three.module.js"
+      }
+    }
+  </script>
+  <script type="module" src="main.js"></script>
+</body>
+</html>
