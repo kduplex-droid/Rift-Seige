@@ -8,20 +8,55 @@
 </head>
 <body>
   <div id="overlay">
-    <div class="panel">
+    <div class="panel bo-menu">
+      <div class="bo-topline">MISSION DEPLOYMENT INTERFACE</div>
       <h1>RIFT SIEGE</h1>
-      <p class="tag">A Three.js sci-fi shooter prototype inspired by industrial arena FPS design.</p>
-      <ul>
-        <li>WASD = move</li>
-        <li>Mouse = aim</li>
-        <li>Left click = fire</li>
-        <li>Shift = sprint</li>
-        <li>Ctrl = crouch</li>
-        <li>Space = jump</li>
-        <li>R = reload</li>
-      </ul>
-      <button id="startBtn">ENTER FACILITY</button>
+      <p class="tag">Industrial sci-fi arena shooter prototype with mission-based progression.</p>
+
+      <div class="menu-grid">
+        <div class="menu-left">
+          <button id="startBtn" class="bo-btn active" type="button">START CAMPAIGN</button>
+          <button id="loadoutBtn" class="bo-btn" type="button">LOADOUT</button>
+          <button id="intelBtn" class="bo-btn" type="button">MISSION INTEL</button>
+        </div>
+
+        <div class="menu-right">
+          <div class="info-card">
+            <div class="info-label">CAMPAIGN</div>
+            <div class="info-value">BREACH THE YARD. DISABLE RELAYS. LOCK DOWN THE CORE. EXTRACT.</div>
+          </div>
+
+          <div class="info-card">
+            <div class="info-label">CONTROLS</div>
+            <ul>
+              <li>WASD = move</li>
+              <li>Mouse = aim</li>
+              <li>Left click = fire</li>
+              <li>Right click = ADS / scope</li>
+              <li>Shift = sprint</li>
+              <li>Ctrl = crouch</li>
+              <li>Space = jump</li>
+              <li>R = reload</li>
+              <li>1 / 2 / 3 = switch weapon</li>
+              <li>Esc = pause</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
       <p class="small">No external assets required. Runs directly in browser.</p>
+    </div>
+  </div>
+
+  <div id="pauseMenu">
+    <div class="panel bo-menu pause-panel">
+      <div class="bo-topline">SYSTEM INTERFACE</div>
+      <h2>PAUSED</h2>
+      <div class="pause-actions">
+        <button id="resumeBtn" class="bo-btn active" type="button">RESUME OPERATION</button>
+        <button id="restartBtn" class="bo-btn" type="button">RESTART MISSION</button>
+      </div>
+      <p class="small">Press Esc to resume.</p>
     </div>
   </div>
 
@@ -30,11 +65,23 @@
       <div class="stat"><span>HEALTH</span><strong id="health">100</strong></div>
       <div class="stat"><span>ARMOR</span><strong id="armor">25</strong></div>
     </div>
+
     <div class="hud-center">
       <div id="crosshair"></div>
-      <div id="message">Secure the reactor core.</div>
+      <div id="scopeOverlay"></div>
+
+      <div id="missionBox">
+        <div class="mission-label">MISSION</div>
+        <div id="missionTitle">Awaiting deployment</div>
+        <div id="missionObjective">Press Start Campaign</div>
+        <div id="missionProgress">0 / 0</div>
+      </div>
+
+      <div id="message">Breach the facility perimeter.</div>
     </div>
+
     <div class="hud-right">
+      <div class="stat"><span>WEAPON</span><strong id="weaponName">RIFLE</strong></div>
       <div class="stat"><span>AMMO</span><strong id="ammo">30 / 120</strong></div>
       <div class="stat"><span>ENEMIES</span><strong id="enemyCount">0</strong></div>
     </div>
