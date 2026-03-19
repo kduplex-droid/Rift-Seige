@@ -8,22 +8,50 @@
 </head>
 <body>
   <div id="overlay">
-    <div class="panel bo-menu">
-      <div class="bo-topline">MISSION DEPLOYMENT INTERFACE</div>
-      <h1>RIFT SIEGE</h1>
-      <p class="tag">Coolest thing you've ever seen. By Lumique</p>
+    <div class="menu-bg-grid"></div>
+    <div class="menu-bg-glow menu-bg-glow-a"></div>
+    <div class="menu-bg-glow menu-bg-glow-b"></div>
 
-      <div class="menu-grid">
-        <div class="menu-left">
-          <button id="startBtn" class="bo-btn active" type="button">START CAMPAIGN</button>
-          <button id="loadoutBtn" class="bo-btn" type="button">LOADOUT</button>
-          <button id="intelBtn" class="bo-btn" type="button">MISSION INTEL</button>
+    <div class="panel bo-menu">
+      <div class="hero-strip">
+        <div class="hero-kicker">TACTICAL DEPLOYMENT NETWORK</div>
+        <div class="hero-status">
+          <span class="status-dot"></span>
+          SYSTEM ONLINE
+        </div>
+      </div>
+
+      <div class="hero-main">
+        <div class="hero-left">
+          <h1>RIFT SIEGE</h1>
+          <p class="tag">Heavy industrial combat zone. Low-visibility interior. Sector lockdown in effect.</p>
+
+          <div class="hero-actions">
+            <button id="startBtn" class="bo-btn active" type="button">START CAMPAIGN</button>
+            <button id="loadoutBtn" class="bo-btn" type="button">LOADOUT</button>
+            <button id="intelBtn" class="bo-btn" type="button">MISSION INTEL</button>
+          </div>
+
+          <div class="hero-badges">
+            <div class="badge-card">
+              <span>MODE</span>
+              <strong>CAMPAIGN</strong>
+            </div>
+            <div class="badge-card">
+              <span>THREAT</span>
+              <strong>HIGH</strong>
+            </div>
+            <div class="badge-card">
+              <span>SECTORS</span>
+              <strong>05</strong>
+            </div>
+          </div>
         </div>
 
-        <div class="menu-right">
+        <div class="hero-right">
           <div class="info-card">
-            <div class="info-label">CAMPAIGN</div>
-            <div class="info-value">BREACH THE YARD. DISABLE RELAYS. LOCK DOWN THE CORE. EXTRACT.</div>
+            <div class="info-label">OBJECTIVE CHAIN</div>
+            <div class="info-value">BREACH THE YARD → DISABLE RELAYS → DESTROY THE WAR ENGINE → CROSS THE OUTSIDE VOID → EXTRACT</div>
           </div>
 
           <div class="info-card">
@@ -38,19 +66,29 @@
               <li>Space = jump</li>
               <li>R = reload</li>
               <li>1 / 2 / 3 = switch weapon</li>
+              <li>M = minimap</li>
               <li>Esc = pause</li>
             </ul>
+          </div>
+
+          <div class="info-card mini-terminal">
+            <div class="info-label">LIVE FEED</div>
+            <div id="terminalFeed">
+              <div>&gt; perimeter breach route loaded</div>
+              <div>&gt; hostile signatures detected</div>
+              <div>&gt; reactor chamber unstable</div>
+            </div>
           </div>
         </div>
       </div>
 
-      <p class="small">No external assets required. Runs directly in browser.</p>
+      <p class="small">Browser build. No external assets required.</p>
     </div>
   </div>
 
   <div id="pauseMenu">
     <div class="panel bo-menu pause-panel">
-      <div class="bo-topline">SYSTEM INTERFACE</div>
+      <div class="hero-kicker">SYSTEM INTERFACE</div>
       <h2>PAUSED</h2>
       <div class="pause-actions">
         <button id="resumeBtn" class="bo-btn active" type="button">RESUME OPERATION</button>
@@ -61,9 +99,37 @@
   </div>
 
   <div id="hud">
+    <div class="hud-topbar">
+      <div class="topbar-left">
+        <div class="top-chip">
+          <span>SECTOR</span>
+          <strong id="sectorLabel">OUTER YARD</strong>
+        </div>
+        <div class="top-chip">
+          <span>MISSION</span>
+          <strong id="missionShort">BREACH</strong>
+        </div>
+      </div>
+      <div class="topbar-right">
+        <div class="top-chip danger">
+          <span>THREAT</span>
+          <strong id="threatLevel">HIGH</strong>
+        </div>
+      </div>
+    </div>
+
     <div class="hud-left">
-      <div class="stat"><span>HEALTH</span><strong id="health">100</strong></div>
-      <div class="stat"><span>ARMOR</span><strong id="armor">25</strong></div>
+      <div class="stat large health-stat">
+        <span>HEALTH</span>
+        <strong id="health">100</strong>
+        <div class="meter"><div id="healthBar" class="meter-fill"></div></div>
+      </div>
+
+      <div class="stat large armor-stat">
+        <span>ARMOR</span>
+        <strong id="armor">25</strong>
+        <div class="meter"><div id="armorBar" class="meter-fill"></div></div>
+      </div>
     </div>
 
     <div class="hud-center">
@@ -77,13 +143,41 @@
         <div id="missionProgress">0 / 0</div>
       </div>
 
+      <div id="bossHud">
+        <div class="boss-name" id="bossName">WAR ENGINE</div>
+        <div class="boss-bar-wrap">
+          <div id="bossBar"></div>
+        </div>
+      </div>
+
       <div id="message">Breach the facility perimeter.</div>
     </div>
 
     <div class="hud-right">
-      <div class="stat"><span>WEAPON</span><strong id="weaponName">RIFLE</strong></div>
-      <div class="stat"><span>AMMO</span><strong id="ammo">30 / 120</strong></div>
-      <div class="stat"><span>ENEMIES</span><strong id="enemyCount">0</strong></div>
+      <div class="stat weapon-stat">
+        <span>WEAPON</span>
+        <strong id="weaponName">RIFLE</strong>
+      </div>
+      <div class="stat weapon-stat">
+        <span>AMMO</span>
+        <strong id="ammo">30 / 150</strong>
+      </div>
+      <div class="stat weapon-stat">
+        <span>ENEMIES</span>
+        <strong id="enemyCount">0</strong>
+      </div>
+    </div>
+
+    <div class="weapon-slots">
+      <div class="weapon-slot active" id="slot-rifle">1</div>
+      <div class="weapon-slot" id="slot-shotgun">2</div>
+      <div class="weapon-slot" id="slot-burst">3</div>
+    </div>
+
+    <div id="minimapWrap">
+      <div class="minimap-title">TACTICAL MAP</div>
+      <canvas id="minimap" width="220" height="220"></canvas>
+      <div class="minimap-hint">M TOGGLE</div>
     </div>
   </div>
 
