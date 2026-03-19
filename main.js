@@ -11,7 +11,7 @@ const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x0a0d12);
 scene.fog = new THREE.FogExp2(0x14181f, 0.028);
 
-const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 700);
+const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 500);
 const baseFov = 75;
 const adsFov = 42;
 
@@ -97,7 +97,7 @@ const world = {
   portals: [],
   jumpPads: [],
   spawnPoints: [],
-  minimapShapes: []
+  outdoorPlatforms: []
 };
 
 const ui = {
@@ -133,7 +133,7 @@ const ui = {
   slotShotgun: document.getElementById('slot-shotgun'),
   slotBurst: document.getElementById('slot-burst'),
   terminalFeed: document.getElementById('terminalFeed'),
-  minimapWrap: document.getElementById('minimapWrap'),
+  minimapPanel: document.getElementById('minimapPanel'),
   minimap: document.getElementById('minimap')
 };
 
@@ -156,7 +156,8 @@ const player = {
   weaponKick: 0,
   ads: false,
   adsAmount: 0,
-  respawnTimer: 0,
+  jumpPadCooldown: 0,
+  respawnCooldown: 0,
   inventory: {
     rifle: { unlocked: true, ammo: 30, reserve: 150 },
     shotgun: { unlocked: false, ammo: 0, reserve: 0 },
@@ -185,8 +186,7 @@ const settings = {
   friction: 10,
   mouseSensitivity: 0.002,
   enemyViewDistance: 34,
-  enemyShootDistance: 19,
-  voidY: -24
+  enemyShootDistance: 19
 };
 
 const bossState = {
@@ -231,8 +231,8 @@ const campaign = {
     {
       title: 'Mission 4: Extraction',
       short: 'EXTRACT',
-      sector: 'OUTSIDE VOID',
-      objective: 'Use jump pads to reach extraction',
+      sector: 'ESCAPE ROUTE',
+      objective: 'Reach the extraction pad',
       type: 'extract',
       target: 1,
       progress: 0,
@@ -253,7 +253,6 @@ const terminalLines = [
   '> reactor chamber unstable',
   '> signal relays remain active',
   '> sector lockdown in effect',
-  '> external platforms unstable',
   '> extraction corridor awaiting clearance'
 ];
 
@@ -355,7 +354,6 @@ function updateHUD() {
   updateWeaponSlots();
   updateTopLabels();
   updateBossHud();
-  ui.minimapWrap.style.display = minimapVisible ? 'block' : 'none';
 }
 
 function updateMissionUI() {
@@ -466,16 +464,12 @@ function addColumn(x, y, z, size = 3) {
   return mesh;
 }
 
-function createPlatform(x, y, z, w, h, d, rail = false, pushToWalls = true) {
-  const mesh = new THREE.Mesh(
+function createPlatform(x, y, z, w, h, d, rail = false) {
+  const mesh = addSolid(new THREE.Mesh(
     new THREE.BoxGeometry(w, h, d),
     makeMaterial(0x343f4c, 0.62, 0.5)
-  );
+  ));
   mesh.position.set(x, y, z);
-  mesh.castShadow = true;
-  mesh.receiveShadow = true;
-  scene.add(mesh);
-  if (pushToWalls) world.walls.push(mesh);
 
   if (rail) {
     addWall(x - w / 2 + 0.15, y + 1, z, 0.3, 2, d, 0x26303b);
@@ -593,6 +587,204 @@ function createFloorPanel(x, z, w, d) {
   world.decor.push(panel);
 }
 
+function addSpawnPoint(x, y, z) {
+  world.spawnPoints.push(new THREE.Vector3(x, y, z));
+}
+
+function respawnPlayer() {
+  if (world.spawnPoints.length === 0) return;
+
+  const spawn = world.spawnPoints[Math.floor(Math.random() * world.spawnPoints.length)];
+  yawObject.position.copy(spawn);
+  player.velocity.set(0, 0, 0);
+  player.health = 100;
+  player.armor = 25;
+  player.canJump = false;
+  player.isGrounded = false;
+  player.respawnCooldown = 1.0;
+  updateHUD();
+  setMessage('Respawned at alternate insertion point.');
+}
+
+function checkVoidRespawn() {
+  if (player.respawnCooldown > 0) return;
+  if (yawObject.position.y < -35) {
+    respawnPlayer();
+  }
+}
+
+function createOutdoorPlatform(x, y, z, w, h, d) {
+  const mesh = addSolid(new THREE.Mesh(
+    new THREE.BoxGeometry(w, h, d),
+    makeMaterial(0x2a3138, 0.82, 0.24)
+  ));
+  mesh.position.set(x, y, z);
+  world.outdoorPlatforms.push(mesh);
+
+  const strip = new THREE.Mesh(
+    new THREE.BoxGeometry(w * 0.65, 0.12, 0.18),
+    makeMaterial(0xcad8ff, 0.2, 0.12, 0x91b5ff, 2.2)
+  );
+  strip.position.set(x, y + h / 2 + 0.08, z);
+  scene.add(strip);
+  world.decor.push(strip);
+
+  return mesh;
+}
+
+function createJumpPad(x, y, z, tx, ty, tz, color = 0x79a8ff) {
+  const group = new THREE.Group();
+
+  const base = new THREE.Mesh(
+    new THREE.CylinderGeometry(1.2, 1.35, 0.3, 20),
+    makeMaterial(0x1a222d, 0.65, 0.22)
+  );
+  base.position.y = 0.15;
+
+  const ring = new THREE.Mesh(
+    new THREE.TorusGeometry(0.78, 0.12, 10, 24),
+    makeMaterial(color, 0.35, 0.12, color, 2.4)
+  );
+  ring.rotation.x = Math.PI / 2;
+  ring.position.y = 0.32;
+
+  const arrow = new THREE.Mesh(
+    new THREE.ConeGeometry(0.24, 0.5, 4),
+    makeMaterial(color, 0.3, 0.18, color, 1.6)
+  );
+  arrow.position.y = 0.7;
+
+  const glow = new THREE.PointLight(color, 5, 10, 2);
+  glow.position.y = 0.8;
+
+  group.add(base, ring, arrow, glow);
+  group.position.set(x, y, z);
+  scene.add(group);
+
+  const dx = tx - x;
+  const dz = tz - z;
+  const airtime = 1.05;
+  const vx = dx / airtime;
+  const vz = dz / airtime;
+  const vy = ((ty - y) + 0.5 * settings.gravity * airtime * airtime) / airtime;
+
+  world.jumpPads.push({
+    mesh: group,
+    ring,
+    target: new THREE.Vector3(tx, ty, tz),
+    launchVelocity: new THREE.Vector3(vx, vy, vz)
+  });
+
+  world.decor.push(group);
+}
+
+function updateJumpPads(delta, elapsed) {
+  player.jumpPadCooldown = Math.max(0, player.jumpPadCooldown - delta);
+  player.respawnCooldown = Math.max(0, player.respawnCooldown - delta);
+
+  const playerFeet = yawObject.position.clone().add(new THREE.Vector3(0, -player.height, 0));
+
+  for (const pad of world.jumpPads) {
+    pad.ring.rotation.z += delta * 2.2;
+    pad.mesh.position.y += Math.sin(elapsed * 2.5 + pad.mesh.position.x * 0.03) * 0.0008;
+
+    const dist = Math.hypot(playerFeet.x - pad.mesh.position.x, playerFeet.z - pad.mesh.position.z);
+    const yClose = Math.abs(playerFeet.y - (pad.mesh.position.y + 0.25)) < 1.2;
+
+    if (dist < 1.35 && yClose && player.isGrounded && player.jumpPadCooldown <= 0) {
+      player.velocity.x = pad.launchVelocity.x;
+      player.velocity.y = pad.launchVelocity.y;
+      player.velocity.z = pad.launchVelocity.z;
+      player.canJump = false;
+      player.isGrounded = false;
+      player.jumpPadCooldown = 0.8;
+      setMessage('Jump pad engaged.');
+    }
+  }
+}
+
+function drawMinimap() {
+  const ctx = minimapCtx;
+  const w = ui.minimap.width;
+  const h = ui.minimap.height;
+
+  ctx.clearRect(0, 0, w, h);
+
+  ctx.fillStyle = 'rgba(8,12,18,0.96)';
+  ctx.fillRect(0, 0, w, h);
+
+  const scale = 0.95;
+  const centerX = w / 2;
+  const centerY = h / 2;
+
+  function mapPos(x, z) {
+    return {
+      x: centerX + x * scale,
+      y: centerY + z * scale
+    };
+  }
+
+  ctx.strokeStyle = 'rgba(120,168,255,0.18)';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(8, 8, w - 16, h - 16);
+
+  ctx.strokeStyle = 'rgba(130,180,255,0.28)';
+  ctx.strokeRect(centerX - 70 * scale, centerY - 82 * scale, 140 * scale, 164 * scale);
+
+  ctx.fillStyle = 'rgba(150,190,255,0.18)';
+  for (const p of world.outdoorPlatforms) {
+    const size = p.geometry.parameters;
+    const pos = mapPos(p.position.x, p.position.z);
+    ctx.fillRect(
+      pos.x - (size.width * scale) / 2,
+      pos.y - (size.depth * scale) / 2,
+      size.width * scale,
+      size.depth * scale
+    );
+  }
+
+  ctx.fillStyle = 'rgba(90,220,255,0.9)';
+  for (const pad of world.jumpPads) {
+    const pos = mapPos(pad.mesh.position.x, pad.mesh.position.z);
+    ctx.beginPath();
+    ctx.arc(pos.x, pos.y, 4, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  ctx.fillStyle = 'rgba(255,120,120,0.7)';
+  for (const key of Object.keys(world.doors)) {
+    const door = world.doors[key];
+    const pos = mapPos(door.group.position.x, door.group.position.z);
+    ctx.fillRect(pos.x - 8, pos.y - 2, 16, 4);
+  }
+
+  ctx.fillStyle = 'rgba(255,90,90,0.95)';
+  for (const enemy of world.enemies) {
+    const pos = mapPos(enemy.mesh.position.x, enemy.mesh.position.z);
+    ctx.beginPath();
+    ctx.arc(pos.x, pos.y, enemy.type === 'boss' ? 5 : 3, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  const p = mapPos(yawObject.position.x, yawObject.position.z);
+  ctx.save();
+  ctx.translate(p.x, p.y);
+  ctx.rotate(-yawObject.rotation.y);
+  ctx.fillStyle = 'rgba(255,255,255,0.95)';
+  ctx.beginPath();
+  ctx.moveTo(0, -8);
+  ctx.lineTo(5, 6);
+  ctx.lineTo(-5, 6);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+}
+
+function updateMinimap() {
+  ui.minimapPanel.classList.toggle('active', minimapVisible);
+  if (minimapVisible) drawMinimap();
+}
+
 function createDoor(name, x, z, width = 14, height = 8, depth = 2.4) {
   const group = new THREE.Group();
 
@@ -625,6 +817,7 @@ function createDoor(name, x, z, width = 14, height = 8, depth = 2.4) {
   group.userData = {
     left,
     right,
+    header,
     indicator,
     closedLeftX: left.position.x,
     closedRightX: right.position.x,
@@ -633,6 +826,15 @@ function createDoor(name, x, z, width = 14, height = 8, depth = 2.4) {
     opening: false,
     open: false
   };
+
+  left.castShadow = true;
+  left.receiveShadow = true;
+  right.castShadow = true;
+  right.receiveShadow = true;
+  header.castShadow = true;
+  header.receiveShadow = true;
+  indicator.castShadow = true;
+  indicator.receiveShadow = true;
 
   scene.add(group);
 
@@ -643,15 +845,20 @@ function createDoor(name, x, z, width = 14, height = 8, depth = 2.4) {
     group,
     left,
     right,
+    header,
     indicator,
     leftSolid,
-    rightSolid
+    rightSolid,
+    width
   };
+
+  return world.doors[name];
 }
 
 function openDoor(name) {
   const door = world.doors[name];
   if (!door || door.group.userData.open || door.group.userData.opening) return;
+
   door.group.userData.opening = true;
   door.indicator.material.emissive.setHex(0x55ffbf);
   door.indicator.material.emissiveIntensity = 3;
@@ -681,106 +888,23 @@ function updateDoors(delta) {
   }
 }
 
-function addSpawnPoint(x, y, z) {
-  world.spawnPoints.push(new THREE.Vector3(x, y, z));
-}
-
-function createJumpPad(x, y, z, targetX, targetY, targetZ, radius = 2.2) {
-  const pad = new THREE.Group();
-
-  const base = new THREE.Mesh(
-    new THREE.CylinderGeometry(1.8, 2.2, 0.6, 18),
-    makeMaterial(0x1a222c, 0.5, 0.22)
-  );
-  base.position.y = 0.3;
-
-  const ring = new THREE.Mesh(
-    new THREE.TorusGeometry(1.45, 0.12, 10, 28),
-    makeMaterial(0x8ec0ff, 0.25, 0.1, 0x8ec0ff, 2)
-  );
-  ring.position.y = 0.68;
-  ring.rotation.x = Math.PI / 2;
-
-  const core = new THREE.Mesh(
-    new THREE.CircleGeometry(1.15, 20),
-    makeMaterial(0x122132, 0.2, 0.12, 0x7fb8ff, 2.4)
-  );
-  core.position.y = 0.7;
-  core.rotation.x = -Math.PI / 2;
-
-  pad.add(base, ring, core);
-  pad.position.set(x, y, z);
-  scene.add(pad);
-
-  const glow = new THREE.PointLight(0x8ec0ff, 5, 10, 2);
-  glow.position.set(x, y + 1.2, z);
-  scene.add(glow);
-
-  world.jumpPads.push({
-    mesh: pad,
-    ring,
-    core,
-    glow,
-    position: new THREE.Vector3(x, y, z),
-    target: new THREE.Vector3(targetX, targetY, targetZ),
-    radius,
-    cooldown: 0
-  });
-
-  world.minimapShapes.push({ type: 'jumppad', x, z });
-}
-
-function createOutsideArena() {
-  const platformData = [
-    { x: 0, y: -0.2, z: -104, w: 18, h: 0.8, d: 18 },
-    { x: -22, y: 5, z: -122, w: 14, h: 0.8, d: 14 },
-    { x: 18, y: 10, z: -138, w: 12, h: 0.8, d: 12 },
-    { x: -10, y: 15, z: -156, w: 12, h: 0.8, d: 12 },
-    { x: 16, y: 19, z: -174, w: 14, h: 0.8, d: 14 },
-    { x: 0, y: 23, z: -194, w: 18, h: 0.8, d: 18 }
-  ];
-
-  for (const p of platformData) {
-    createPlatform(p.x, p.y, p.z, p.w, p.h, p.d, false, true);
-    const light = new THREE.PointLight(0x9fc6ff, 3, 16, 2);
-    light.position.set(p.x, p.y + 4, p.z);
-    scene.add(light);
-    world.decor.push(light);
-    world.minimapShapes.push({ type: 'platform', x: p.x, z: p.z, w: p.w, d: p.d });
-  }
-
-  createJumpPad(0, 0, -95, -22, 7, -122);
-  createJumpPad(-22, 5.2, -122, 18, 12, -138);
-  createJumpPad(18, 10.2, -138, -10, 17, -156);
-  createJumpPad(-10, 15.2, -156, 16, 21, -174);
-  createJumpPad(16, 19.2, -174, 0, 25, -194);
-
-  addSpawnPoint(0, 2.2, 66);
-  addSpawnPoint(-40, 2.2, 10);
-  addSpawnPoint(42, 2.2, -6);
-  addSpawnPoint(0, 4.5, -66);
-  addSpawnPoint(0, 2.2, -104);
-  addSpawnPoint(-22, 7, -122);
-  addSpawnPoint(18, 12, -138);
-  addSpawnPoint(-10, 17, -156);
-  addSpawnPoint(16, 21, -174);
-  addSpawnPoint(0, 25, -194);
-}
-
 function createWorld() {
-  const interiorFloor = new THREE.Mesh(
-    new THREE.BoxGeometry(150, 1, 176),
+  const floor = new THREE.Mesh(
+    new THREE.BoxGeometry(150, 1, 170),
     makeMaterial(0x171c23, 0.72, 0.5)
   );
-  interiorFloor.receiveShadow = true;
-  interiorFloor.position.set(0, -0.5, -2);
-  scene.add(interiorFloor);
+  floor.receiveShadow = true;
+  floor.position.y = -0.5;
+  scene.add(floor);
 
   const border = 3;
+
+  addWall(-46, 3, -82, 58, 8, border, 0x2b333c);
+  addWall(46, 3, -82, 58, 8, border, 0x2b333c);
+
   addWall(0, 3, 82, 150, 8, border, 0x2b333c);
-  addWall(0, 3, -90, 150, 8, border, 0x2b333c);
-  addWall(-73, 3, -2, border, 8, 176, 0x2b333c);
-  addWall(73, 3, -2, border, 8, 176, 0x2b333c);
+  addWall(-73, 3, 0, border, 8, 170, 0x2b333c);
+  addWall(73, 3, 0, border, 8, 170, 0x2b333c);
 
   addWall(-28, 3, 26, 22, 8, 4, 0x313943);
   addWall(28, 3, 26, 22, 8, 4, 0x313943);
@@ -827,6 +951,7 @@ function createWorld() {
   createTechBlock(-8, 2.4, -62, 5, 4.8, 5);
   createTechBlock(0, 2.4, -62, 5, 4.8, 5);
   createTechBlock(8, 2.4, -62, 5, 4.8, 5);
+
   createTechBlock(-42, 2.1, 8, 4, 4.2, 4);
   createTechBlock(42, 2.1, -4, 4, 4.2, 4);
 
@@ -851,7 +976,12 @@ function createWorld() {
   }
 
   for (let i = 0; i < 46; i++) {
-    createPipe((Math.random() - 0.5) * 126, 2 + Math.random() * 5, (Math.random() - 0.5) * 150, 4 + Math.random() * 7);
+    createPipe(
+      (Math.random() - 0.5) * 126,
+      2 + Math.random() * 5,
+      (Math.random() - 0.5) * 150,
+      4 + Math.random() * 7
+    );
   }
 
   createLamp(-52, 6, -68);
@@ -898,24 +1028,41 @@ function createWorld() {
   reactorLight.position.set(0, 4.4, -64);
   scene.add(reactorLight);
 
-  createOutsideArena();
-
   world.extractPad = new THREE.Mesh(
     new THREE.CylinderGeometry(4.5, 4.5, 0.35, 24),
     makeMaterial(0x122130, 0.35, 0.35, 0x55ffbf, 0)
   );
-  world.extractPad.position.set(0, 23.2, -194);
+  world.extractPad.position.set(0, 15.9, -144);
   world.extractPad.visible = false;
   scene.add(world.extractPad);
 
-  world.minimapShapes.push({ type: 'rect', x: 0, z: -2, w: 150, d: 176 });
-  world.minimapShapes.push({ type: 'reactor', x: 0, z: -64 });
-  world.minimapShapes.push({ type: 'extract', x: 0, z: -194 });
+  createOutdoorPlatform(0, 2, -98, 18, 1.2, 18);
+  createOutdoorPlatform(-24, 8, -118, 14, 1.2, 14);
+  createOutdoorPlatform(24, 10, -126, 14, 1.2, 14);
+  createOutdoorPlatform(0, 15, -144, 18, 1.2, 18);
+  createOutdoorPlatform(-34, 18, -154, 12, 1.2, 12);
+  createOutdoorPlatform(34, 18, -154, 12, 1.2, 12);
+
+  createLightStrip(0, 4.2, -98, 8);
+  createLightStrip(-24, 10.2, -118, 6);
+  createLightStrip(24, 12.2, -126, 6);
+  createLightStrip(0, 17.2, -144, 8);
+
+  createJumpPad(0, 2.7, -90, 0, 2.8, -98, 0x79a8ff);
+  createJumpPad(0, 2.7, -98, -24, 8.8, -118, 0x79a8ff);
+  createJumpPad(-24, 8.7, -118, 24, 10.8, -126, 0x79a8ff);
+  createJumpPad(24, 10.7, -126, 0, 15.8, -144, 0x79a8ff);
+  createJumpPad(0, 15.7, -144, -34, 18.8, -154, 0x79a8ff);
+  createJumpPad(0, 15.7, -144, 34, 18.8, -154, 0x79a8ff);
 
   addSpawnPoint(0, 2.2, 66);
-  addSpawnPoint(-40, 2.2, 10);
-  addSpawnPoint(42, 2.2, -6);
-  addSpawnPoint(0, 4.8, -66);
+  addSpawnPoint(-20, 2.2, 32);
+  addSpawnPoint(22, 2.2, -18);
+  addSpawnPoint(0, 3.2, -64);
+  addSpawnPoint(0, 4.5, -98);
+  addSpawnPoint(-24, 10.2, -118);
+  addSpawnPoint(24, 12.2, -126);
+  addSpawnPoint(0, 17.2, -144);
 }
 
 function createWeaponVisuals() {
@@ -926,18 +1073,38 @@ function createWeaponVisuals() {
 
   {
     const g = new THREE.Group();
-    const body = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.18, 0.95), makeMaterial(0x202833, 0.82, 0.25));
+    const body = new THREE.Mesh(
+      new THREE.BoxGeometry(0.28, 0.18, 0.95),
+      makeMaterial(0x202833, 0.82, 0.25)
+    );
     body.position.set(0.28, -0.28, -0.68);
-    const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.04, 0.6, 12), makeMaterial(0xb7c9e7, 0.9, 0.15));
+
+    const barrel = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.035, 0.04, 0.6, 12),
+      makeMaterial(0xb7c9e7, 0.9, 0.15)
+    );
     barrel.rotation.z = Math.PI / 2;
     barrel.position.set(0.48, -0.24, -1.08);
-    const glow = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.04, 0.3), makeMaterial(0x182640, 0.5, 0.3, weaponDefs.rifle.color, 1.8));
+
+    const glow = new THREE.Mesh(
+      new THREE.BoxGeometry(0.18, 0.04, 0.3),
+      makeMaterial(0x182640, 0.5, 0.3, weaponDefs.rifle.color, 1.8)
+    );
     glow.position.set(0.23, -0.18, -0.72);
-    const scopeBase = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.08, 0.18), makeMaterial(0x10161f, 0.7, 0.3));
+
+    const scopeBase = new THREE.Mesh(
+      new THREE.BoxGeometry(0.16, 0.08, 0.18),
+      makeMaterial(0x10161f, 0.7, 0.3)
+    );
     scopeBase.position.set(0.18, -0.12, -0.6);
-    const scopeTube = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.055, 0.34, 18), makeMaterial(0x151d27, 0.8, 0.22));
+
+    const scopeTube = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.055, 0.055, 0.34, 18),
+      makeMaterial(0x151d27, 0.8, 0.22)
+    );
     scopeTube.rotation.z = Math.PI / 2;
     scopeTube.position.set(0.22, -0.08, -0.8);
+
     g.add(body, barrel, glow, scopeBase, scopeTube);
     root.add(g);
     visuals.rifle = g;
@@ -945,15 +1112,31 @@ function createWeaponVisuals() {
 
   {
     const g = new THREE.Group();
-    const stock = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.22, 0.78), makeMaterial(0x271f18, 0.35, 0.6));
+    const stock = new THREE.Mesh(
+      new THREE.BoxGeometry(0.36, 0.22, 0.78),
+      makeMaterial(0x271f18, 0.35, 0.6)
+    );
     stock.position.set(0.25, -0.3, -0.55);
-    const receiver = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.22, 0.5), makeMaterial(0x242b33, 0.82, 0.2));
+
+    const receiver = new THREE.Mesh(
+      new THREE.BoxGeometry(0.3, 0.22, 0.5),
+      makeMaterial(0x242b33, 0.82, 0.2)
+    );
     receiver.position.set(0.42, -0.28, -0.9);
-    const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.05, 0.95, 14), makeMaterial(0xc9d2dd, 0.9, 0.18));
+
+    const barrel = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.045, 0.05, 0.95, 14),
+      makeMaterial(0xc9d2dd, 0.9, 0.18)
+    );
     barrel.rotation.z = Math.PI / 2;
     barrel.position.set(0.78, -0.22, -1.18);
-    const pump = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.12, 0.32), makeMaterial(0x1a1d22, 0.5, 0.35, weaponDefs.shotgun.color, 0.7));
+
+    const pump = new THREE.Mesh(
+      new THREE.BoxGeometry(0.2, 0.12, 0.32),
+      makeMaterial(0x1a1d22, 0.5, 0.35, weaponDefs.shotgun.color, 0.7)
+    );
     pump.position.set(0.58, -0.23, -1.03);
+
     g.add(stock, receiver, barrel, pump);
     root.add(g);
     visuals.shotgun = g;
@@ -961,17 +1144,37 @@ function createWeaponVisuals() {
 
   {
     const g = new THREE.Group();
-    const body = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.17, 0.8), makeMaterial(0x1f2430, 0.82, 0.25));
+    const body = new THREE.Mesh(
+      new THREE.BoxGeometry(0.24, 0.17, 0.8),
+      makeMaterial(0x1f2430, 0.82, 0.25)
+    );
     body.position.set(0.27, -0.27, -0.66);
-    const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.035, 0.52, 12), makeMaterial(0xd4dbeb, 0.9, 0.15));
+
+    const barrel = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.03, 0.035, 0.52, 12),
+      makeMaterial(0xd4dbeb, 0.9, 0.15)
+    );
     barrel.rotation.z = Math.PI / 2;
     barrel.position.set(0.43, -0.23, -1.02);
-    const core = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.05, 0.28), makeMaterial(0x1a1830, 0.4, 0.25, weaponDefs.burst.color, 1.9));
+
+    const core = new THREE.Mesh(
+      new THREE.BoxGeometry(0.16, 0.05, 0.28),
+      makeMaterial(0x1a1830, 0.4, 0.25, weaponDefs.burst.color, 1.9)
+    );
     core.position.set(0.22, -0.17, -0.73);
-    const topRail = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.05, 0.32), makeMaterial(0x151a22, 0.65, 0.22));
+
+    const topRail = new THREE.Mesh(
+      new THREE.BoxGeometry(0.2, 0.05, 0.32),
+      makeMaterial(0x151a22, 0.65, 0.22)
+    );
     topRail.position.set(0.21, -0.1, -0.72);
-    const optic = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.08, 0.14), makeMaterial(0x11151d, 0.75, 0.2));
+
+    const optic = new THREE.Mesh(
+      new THREE.BoxGeometry(0.13, 0.08, 0.14),
+      makeMaterial(0x11151d, 0.75, 0.2)
+    );
     optic.position.set(0.21, -0.04, -0.8);
+
     g.add(body, barrel, core, topRail, optic);
     root.add(g);
     visuals.burst = g;
@@ -1094,13 +1297,16 @@ function createPortal(x, y, z, color = 0x79a8ff) {
   group.position.set(x, y, z);
   scene.add(group);
 
-  world.portals.push({
+  const portal = {
     mesh: group,
     ring,
     core,
     glow: halo,
-    life: 1.5
-  });
+    life: 1.5,
+    color
+  };
+  world.portals.push(portal);
+  return portal;
 }
 
 function updatePortals(delta) {
@@ -1311,6 +1517,7 @@ function resetDoors() {
 
     data.open = false;
     data.opening = false;
+
     door.left.position.x = data.closedLeftX;
     door.right.position.x = data.closedRightX;
 
@@ -1319,6 +1526,7 @@ function resetDoors() {
 
     door.leftSolid = door.left;
     door.rightSolid = door.right;
+
     door.indicator.material.emissive.setHex(0xff5f5f);
     door.indicator.material.emissiveIntensity = 2.5;
   }
@@ -1334,19 +1542,7 @@ function resetPlayerLoadout() {
   player.dead = false;
   player.reloadTimer = 0;
   player.fireCooldown = 0;
-  player.velocity.set(0, 0, 0);
   refreshWeaponVisual();
-}
-
-function respawnPlayer(randomized = true) {
-  if (world.spawnPoints.length === 0) return;
-  const index = randomized ? Math.floor(Math.random() * world.spawnPoints.length) : 0;
-  const p = world.spawnPoints[index];
-  yawObject.position.set(p.x, p.y, p.z);
-  player.velocity.set(0, 0, 0);
-  player.health = Math.max(50, player.health);
-  setMessage('Respawned.');
-  updateHUD();
 }
 
 function startCampaign() {
@@ -1357,7 +1553,6 @@ function startCampaign() {
   resetPlayerLoadout();
   world.extractPad.visible = false;
   beginMission();
-  respawnPlayer(false);
 }
 
 function beginMission() {
@@ -1472,11 +1667,11 @@ function setupMission4() {
   world.extractPad.visible = true;
   campaign.missions[campaign.current].progress = 0;
   updateMissionUI();
-  setMessage('Use jump pads to cross the outside void and reach extraction.');
+  setMessage('Move through the final sector and reach extraction.');
 
   queueWave(4.0, [
-    { x: 0, y: 0, z: -104, type: 'stalker', portalColor: 0xff7b5a },
-    { x: -22, y: 5, z: -122, type: 'gunner', portalColor: 0xa06cff }
+    { x: -20, y: 1, z: -66, type: 'stalker', portalColor: 0xff7b5a },
+    { x: 20, y: 1, z: -66, type: 'stalker', portalColor: 0xff7b5a }
   ]);
 }
 
@@ -1517,7 +1712,7 @@ function resolvePlayerCollisions(nextPos) {
     box.copy(getPlayerAABB(nextPos));
   }
 
-  if (nextPos.y < player.height && nextPos.z > -90) {
+  if (nextPos.y < (input.crouch ? 1.35 : player.height)) {
     nextPos.y = input.crouch ? 1.35 : player.height;
     player.velocity.y = 0;
     grounded = true;
@@ -1525,41 +1720,6 @@ function resolvePlayerCollisions(nextPos) {
 
   player.isGrounded = grounded;
   if (grounded) player.canJump = true;
-}
-
-function updateJumpPads(delta) {
-  for (const pad of world.jumpPads) {
-    pad.cooldown = Math.max(0, pad.cooldown - delta);
-    pad.ring.rotation.z += delta * 2.4;
-    pad.core.material.emissiveIntensity = 1.8 + Math.sin(performance.now() * 0.012) * 0.5;
-    pad.glow.intensity = 4 + Math.sin(performance.now() * 0.01) * 1.2;
-
-    if (pad.cooldown > 0) continue;
-
-    const dx = yawObject.position.x - pad.position.x;
-    const dz = yawObject.position.z - pad.position.z;
-    const dist = Math.hypot(dx, dz);
-
-    if (dist < pad.radius && yawObject.position.y <= pad.position.y + 3 && player.velocity.y <= 2) {
-      const displacement = pad.target.clone().sub(yawObject.position);
-      const flightTime = 1.0;
-      player.velocity.x = displacement.x / flightTime;
-      player.velocity.z = displacement.z / flightTime;
-      player.velocity.y = Math.max(17, (displacement.y + 0.5 * settings.gravity * flightTime * flightTime) / flightTime);
-      player.isGrounded = false;
-      player.canJump = false;
-      pad.cooldown = 1.0;
-      setMessage('Jump pad engaged.');
-    }
-  }
-}
-
-function checkVoidRespawn() {
-  if (yawObject.position.y < settings.voidY) {
-    player.armor = Math.max(0, player.armor - 15);
-    player.health = Math.max(25, player.health - 20);
-    respawnPlayer(true);
-  }
 }
 
 function updatePlayer(delta) {
@@ -1609,6 +1769,8 @@ function updatePlayer(delta) {
   player.fireCooldown = Math.max(0, player.fireCooldown - delta);
   player.reloadTimer = Math.max(0, player.reloadTimer - delta);
   player.weaponKick = Math.max(0, player.weaponKick - delta * 8);
+  player.jumpPadCooldown = Math.max(0, player.jumpPadCooldown - delta);
+  player.respawnCooldown = Math.max(0, player.respawnCooldown - delta);
 
   weaponVisual.root.position.x = 0.18 - player.adsAmount * 0.16 + Math.cos(player.bobTime * 0.5) * 0.03 * (1 - player.adsAmount);
   weaponVisual.root.position.y = -0.28 + player.adsAmount * 0.12 + Math.sin(player.bobTime) * 0.04 * (1 - player.adsAmount);
@@ -1625,6 +1787,7 @@ function updatePlayer(delta) {
 function startReload() {
   const def = currentWeaponDef();
   const state = currentWeaponState();
+
   if (player.reloadTimer > 0 || state.ammo === def.magSize || state.reserve <= 0 || player.dead) return;
 
   player.reloadTimer = def.reloadTime;
@@ -1717,6 +1880,7 @@ function shoot() {
 
   for (let s = 0; s < shotCount; s++) {
     const burstDelay = s * 55;
+
     setTimeout(() => {
       if (player.dead) return;
 
@@ -1724,8 +1888,10 @@ function shoot() {
         const direction = camera.getWorldDirection(new THREE.Vector3());
         const spread = player.ads
           ? def.adsSpread
-          : input.sprint ? def.sprintSpread
-          : input.crouch ? def.crouchSpread
+          : input.sprint
+          ? def.sprintSpread
+          : input.crouch
+          ? def.crouchSpread
           : def.spread;
 
         direction.x += (Math.random() - 0.5) * spread;
@@ -1774,8 +1940,11 @@ function damageEnemy(enemy, amount, point) {
 
     const roll = Math.random();
     if (enemy.type !== 'boss') {
-      if (roll > 0.82) addPickup('weapon', point.x, point.y, point.z, enemy.type === 'gunner' ? 'burst' : 'shotgun');
-      else if (roll > 0.55) addPickup('ammo', point.x, point.y, point.z, enemy.type === 'gunner' ? 'burst' : 'shotgun');
+      if (roll > 0.82) {
+        addPickup('weapon', point.x, 0.9, point.z, enemy.type === 'gunner' ? 'burst' : 'shotgun');
+      } else if (roll > 0.55) {
+        addPickup('ammo', point.x, 0.9, point.z, enemy.type === 'gunner' ? 'burst' : 'shotgun');
+      }
     }
 
     setMessage(enemy.type === 'boss' ? 'War engine destroyed.' : world.enemies.length === 0 ? 'Sector clear.' : 'Hostile neutralized.');
@@ -1869,6 +2038,11 @@ function resolveEnemyCollisions(enemy) {
     else if (minPush === pushX2) enemy.mesh.position.x = tmpBox2.min.x - enemy.radius;
     else if (minPush === pushZ1) enemy.mesh.position.z = tmpBox2.max.z + enemy.radius;
     else enemy.mesh.position.z = tmpBox2.min.z - enemy.radius;
+
+    enemyBox.set(
+      new THREE.Vector3(enemy.mesh.position.x - enemy.radius, enemy.mesh.position.y, enemy.mesh.position.z - enemy.radius),
+      new THREE.Vector3(enemy.mesh.position.x + enemy.radius, enemy.mesh.position.y + enemy.height, enemy.mesh.position.z + enemy.radius)
+    );
   }
 }
 
@@ -1994,7 +2168,7 @@ function updateMissionObjects(delta, elapsed) {
   if (mission && mission.type === 'extract' && world.extractPad.visible) {
     world.extractPad.material.emissiveIntensity = 0.8 + Math.sin(elapsed * 4) * 0.25;
     const dist = world.extractPad.position.distanceTo(yawObject.position.clone().add(new THREE.Vector3(0, -2, 0)));
-    if (dist < 5.4) {
+    if (dist < 4.8) {
       mission.progress = 1;
       updateMissionUI();
       completeMission();
@@ -2011,7 +2185,9 @@ function updateWaves(delta) {
       wave.triggered = true;
       for (const e of wave.enemies) {
         createPortal(e.x, e.y + 1.3, e.z, e.portalColor || 0x79a8ff);
-        setTimeout(() => spawnEnemy(e.x, e.y, e.z, e.type), 650);
+        setTimeout(() => {
+          spawnEnemy(e.x, e.y, e.z, e.type);
+        }, 650);
       }
       setMessage('Hostile reinforcements inbound.');
     }
@@ -2039,81 +2215,10 @@ function updateLandingFeed(delta) {
   const newLine = document.createElement('div');
   newLine.textContent = terminalLines[terminalIndex];
   ui.terminalFeed.prepend(newLine);
-  while (ui.terminalFeed.children.length > 3) ui.terminalFeed.removeChild(ui.terminalFeed.lastChild);
-}
 
-function drawMinimap() {
-  if (!minimapVisible) return;
-
-  const ctx = minimapCtx;
-  const w = ui.minimap.width;
-  const h = ui.minimap.height;
-
-  ctx.clearRect(0, 0, w, h);
-  ctx.fillStyle = '#08111a';
-  ctx.fillRect(0, 0, w, h);
-
-  const worldMinX = -80;
-  const worldMaxX = 80;
-  const worldMinZ = -210;
-  const worldMaxZ = 90;
-
-  function tx(x) { return ((x - worldMinX) / (worldMaxX - worldMinX)) * w; }
-  function ty(z) { return h - ((z - worldMinZ) / (worldMaxZ - worldMinZ)) * h; }
-
-  ctx.strokeStyle = 'rgba(120,170,255,0.15)';
-  ctx.lineWidth = 1;
-  for (let i = 0; i <= 10; i++) {
-    const gx = (w / 10) * i;
-    const gy = (h / 10) * i;
-    ctx.beginPath(); ctx.moveTo(gx, 0); ctx.lineTo(gx, h); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(0, gy); ctx.lineTo(w, gy); ctx.stroke();
+  while (ui.terminalFeed.children.length > 3) {
+    ui.terminalFeed.removeChild(ui.terminalFeed.lastChild);
   }
-
-  for (const s of world.minimapShapes) {
-    if (s.type === 'rect' || s.type === 'platform') {
-      ctx.fillStyle = s.type === 'platform' ? 'rgba(120,180,255,0.22)' : 'rgba(80,120,180,0.16)';
-      const rx = tx(s.x - s.w / 2);
-      const ry = ty(s.z + s.d / 2);
-      const rw = tx(s.x + s.w / 2) - tx(s.x - s.w / 2);
-      const rh = ty(s.z - s.d / 2) - ty(s.z + s.d / 2);
-      ctx.fillRect(rx, ry, rw, rh);
-    } else if (s.type === 'jumppad') {
-      ctx.fillStyle = '#89c1ff';
-      ctx.beginPath();
-      ctx.arc(tx(s.x), ty(s.z), 4, 0, Math.PI * 2);
-      ctx.fill();
-    } else if (s.type === 'extract') {
-      ctx.fillStyle = '#61f7be';
-      ctx.beginPath();
-      ctx.arc(tx(s.x), ty(s.z), 6, 0, Math.PI * 2);
-      ctx.fill();
-    } else if (s.type === 'reactor') {
-      ctx.fillStyle = '#ff9d9d';
-      ctx.beginPath();
-      ctx.arc(tx(s.x), ty(s.z), 5, 0, Math.PI * 2);
-      ctx.fill();
-    }
-  }
-
-  for (const enemy of world.enemies) {
-    ctx.fillStyle = enemy.type === 'boss' ? '#ff5f5f' : '#ffb36d';
-    ctx.beginPath();
-    ctx.arc(tx(enemy.mesh.position.x), ty(enemy.mesh.position.z), enemy.type === 'boss' ? 5 : 3, 0, Math.PI * 2);
-    ctx.fill();
-  }
-
-  ctx.save();
-  ctx.translate(tx(yawObject.position.x), ty(yawObject.position.z));
-  ctx.rotate(-yawObject.rotation.y);
-  ctx.fillStyle = '#dbe7ff';
-  ctx.beginPath();
-  ctx.moveTo(0, -8);
-  ctx.lineTo(5, 6);
-  ctx.lineTo(-5, 6);
-  ctx.closePath();
-  ctx.fill();
-  ctx.restore();
 }
 
 function onResize() {
@@ -2135,6 +2240,120 @@ ui.resumeBtn.addEventListener('click', resumeGame);
 ui.restartBtn.addEventListener('click', restartGame);
 
 ui.loadoutBtn.addEventListener('click', () => setMessage('Switch weapons with 1 / 2 / 3.'));
-ui.intelBtn.addEventListener('click', () => setMessage('Outside sector requires jump pad traversal.'));
+ui.intelBtn.addEventListener('click', () => setMessage('Mission 3 contains a sector boss.'));
+
 renderer.domElement.addEventListener('click', () => {
-  if (gameStarted
+  if (gameStarted && !isPaused && document.pointerLockElement !== renderer.domElement) {
+    requestLock();
+  }
+});
+
+document.addEventListener('mousemove', (e) => {
+  if (isPaused) return;
+  if (document.pointerLockElement !== renderer.domElement || player.dead) return;
+  yawObject.rotation.y -= e.movementX * settings.mouseSensitivity;
+  pitchObject.rotation.x -= e.movementY * settings.mouseSensitivity;
+  pitchObject.rotation.x = Math.max(-1.35, Math.min(1.35, pitchObject.rotation.x));
+});
+
+document.addEventListener('keydown', (e) => {
+  if (e.code === 'Escape') {
+    e.preventDefault();
+    if (isPaused) resumeGame();
+    else pauseGame();
+    return;
+  }
+
+  if (isPaused) return;
+
+  if (e.code === 'Digit1') switchWeapon('rifle');
+  if (e.code === 'Digit2') switchWeapon('shotgun');
+  if (e.code === 'Digit3') switchWeapon('burst');
+
+  if (e.code === 'KeyM' || e.code === 'Numpad0') {
+    minimapVisible = !minimapVisible;
+    updateMinimap();
+  }
+
+  if (e.code === 'KeyW') input.forward = true;
+  if (e.code === 'KeyS') input.backward = true;
+  if (e.code === 'KeyA') input.left = true;
+  if (e.code === 'KeyD') input.right = true;
+  if (e.code === 'ShiftLeft') input.sprint = true;
+  if (e.code === 'ControlLeft') input.crouch = true;
+  if (e.code === 'Space' && player.canJump) {
+    player.velocity.y = settings.jumpForce;
+    player.canJump = false;
+    player.isGrounded = false;
+  }
+  if (e.code === 'KeyR') startReload();
+});
+
+document.addEventListener('keyup', (e) => {
+  if (isPaused) return;
+  if (e.code === 'KeyW') input.forward = false;
+  if (e.code === 'KeyS') input.backward = false;
+  if (e.code === 'KeyA') input.left = false;
+  if (e.code === 'KeyD') input.right = false;
+  if (e.code === 'ShiftLeft') input.sprint = false;
+  if (e.code === 'ControlLeft') input.crouch = false;
+});
+
+document.addEventListener('mousedown', (e) => {
+  if (isPaused) return;
+  if (e.button === 0) input.shoot = true;
+  if (e.button === 2) input.ads = true;
+});
+
+document.addEventListener('mouseup', (e) => {
+  if (isPaused) return;
+  if (e.button === 0) input.shoot = false;
+  if (e.button === 2) input.ads = false;
+});
+
+document.addEventListener('contextmenu', (e) => {
+  e.preventDefault();
+});
+
+createWorld();
+refreshWeaponVisual();
+updateHUD();
+updateMissionUI();
+setMessage('Breach the facility perimeter.');
+
+function loop() {
+  const delta = Math.min(clock.getDelta(), 0.033);
+  const elapsed = clock.elapsedTime;
+
+  if (isPaused) {
+    renderer.render(scene, camera);
+    requestAnimationFrame(loop);
+    return;
+  }
+
+  if (!gameStarted) {
+    updateLandingFeed(delta);
+  }
+
+  if (campaign.started) {
+    updatePlayer(delta);
+    updateEnemies(delta);
+    updateEnemyProjectiles(delta);
+    updatePickups(delta, elapsed);
+    updateMissionObjects(delta, elapsed);
+    updateWaves(delta);
+    updateDoors(delta);
+    updatePortals(delta);
+    updateJumpPads(delta, elapsed);
+    checkVoidRespawn();
+    animateDecor(elapsed);
+    updateBossHud();
+    updateTopLabels();
+    updateMinimap();
+  }
+
+  renderer.render(scene, camera);
+  requestAnimationFrame(loop);
+}
+
+loop();
