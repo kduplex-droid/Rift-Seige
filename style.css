@@ -1,9 +1,13 @@
 :root {
   --bg: #07090d;
+  --panel: rgba(7, 10, 15, 0.86);
+  --line: rgba(116, 162, 255, 0.35);
   --text: #dbe7ff;
   --muted: #8fa6cf;
+  --accent: #79a8ff;
   --danger: #ff5f5f;
   --success: #61f7be;
+  --gold: #ffc66b;
 }
 
 * {
@@ -15,7 +19,7 @@ html, body {
   width: 100%;
   height: 100%;
   overflow: hidden;
-  background: radial-gradient(circle at top, #111827 0%, #07090d 40%, #020305 100%);
+  background: radial-gradient(circle at top, #111827 0%, var(--bg) 40%, #020305 100%);
   color: var(--text);
   font-family: Inter, Arial, Helvetica, sans-serif;
 }
@@ -592,40 +596,38 @@ button:hover {
   color: #dbe7ff;
 }
 
-#minimapWrap {
+#minimapPanel {
   position: absolute;
-  right: 20px;
-  bottom: 84px;
+  left: 20px;
+  bottom: 24px;
   width: 240px;
   padding: 10px;
-  background: rgba(6, 10, 15, 0.62);
-  border: 1px solid rgba(121, 168, 255, 0.2);
-  backdrop-filter: blur(10px);
   display: none;
+  background: rgba(6, 10, 15, 0.78);
+  border: 1px solid rgba(121, 168, 255, 0.22);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 0 18px rgba(0, 0, 0, 0.35);
 }
 
-.minimap-title,
-.minimap-hint {
-  font-size: 0.7rem;
-  color: #9db7e8;
-  letter-spacing: 0.18em;
+#minimapPanel.active {
+  display: block;
+}
+
+.minimap-header {
+  margin-bottom: 8px;
+  font-size: 0.68rem;
+  letter-spacing: 0.24em;
+  color: #9db9ef;
   text-transform: uppercase;
 }
 
-.minimap-title {
-  margin-bottom: 8px;
-}
-
-.minimap-hint {
-  margin-top: 8px;
-  text-align: right;
-}
-
 #minimap {
-  width: 220px;
-  height: 220px;
-  background: rgba(8, 13, 20, 0.9);
-  border: 1px solid rgba(121, 168, 255, 0.12);
+  width: 100%;
+  height: auto;
+  display: block;
+  background:
+    radial-gradient(circle at center, rgba(36, 52, 76, 0.55), rgba(8, 12, 18, 0.92));
+  border: 1px solid rgba(121, 168, 255, 0.16);
 }
 
 #damageFlash {
@@ -715,13 +717,9 @@ button:hover {
     bottom: 20px;
   }
 
-  #minimapWrap {
-    right: 12px;
-    width: 210px;
-  }
-
-  #minimap {
-    width: 190px;
-    height: 190px;
+  #minimapPanel {
+    left: 12px;
+    bottom: 72px;
+    width: 180px;
   }
 }
